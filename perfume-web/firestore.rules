@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Temporary test mode: allow public writes/reads to orders.
+    // Use only while debugging checkout issues, then switch to secure rules below.
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // Default deny for other collections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
