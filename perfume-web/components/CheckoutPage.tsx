@@ -144,7 +144,10 @@ export default function CheckoutPage({ initialProductId }: CheckoutPageProps) {
       setErrors({});
       setPaymentMethod("cod");
     } catch (error) {
-      console.error("[CheckoutPage] Order placement failed", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[CheckoutPage] Order placement failed", error);
+      }
+
       setSubmitError(describeFirebaseOrderError(error, "write"));
     } finally {
       setIsSubmitting(false);

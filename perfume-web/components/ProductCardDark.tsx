@@ -22,7 +22,6 @@ export default function ProductCardDark({
   notes,
 }: ProductCardProps) {
   const handleAddToCart = () => {
-    console.log(`Added ${name} to cart`);
     // TODO: Implement add to cart functionality
   };
 

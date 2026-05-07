@@ -1,25 +1,37 @@
 const mongoose = require("mongoose");
 
+let connectionPromise = null;
+
 async function connectDB() {
-  const mongoUri = process.env.MONGO_URI;
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || process.env.DATABASE_URL;
 
   if (!mongoUri) {
-    throw new Error("MONGO_URI is not defined in .env");
+    throw new Error("Missing MongoDB connection string. Set MONGO_URI for the backend deployment.");
   }
 
   if (mongoose.connection.readyState === 1) {
     return mongoose.connection;
   }
 
-  try {
-    await mongoose.connect(mongoUri);
-    console.log("MongoDB Connected");
-    return mongoose.connection;
-  } catch (error) {
-    console.warn("MongoDB connection failed, starting API with local fallback store.");
-    console.warn(error instanceof Error ? error.message : error);
-    return null;
+  if (mongoose.connection.readyState === 2) {
+    return connectionPromise || mongoose.connection.asPromise();
   }
+
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(mongoUri, {
+      bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
+    }).catch((error) => {
+      connectionPromise = null;
+      throw error;
+    });
+  }
+
+  await connectionPromise;
+
+  connectionPromise = null;
+
+  return mongoose.connection;
 }
 
 module.exports = connectDB;

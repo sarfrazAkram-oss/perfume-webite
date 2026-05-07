@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { Product } from "@/lib/products";
 
 export interface CartItem {
@@ -26,37 +26,41 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [items],
   );
 
+  const addItem = useCallback((item: CartItem) => {
+    setItems((currentItems) => {
+      const existingIndex = currentItems.findIndex(
+        (currentItem) =>
+          currentItem.product.id === item.product.id &&
+          currentItem.selectedSize === item.selectedSize,
+      );
+
+      if (existingIndex === -1) {
+        return [...currentItems, item];
+      }
+
+      return currentItems.map((currentItem, index) =>
+        index === existingIndex
+          ? {
+              ...currentItem,
+              quantity: currentItem.quantity + item.quantity,
+            }
+          : currentItem,
+      );
+    });
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setItems([]);
+  }, []);
+
   const value = useMemo(
     () => ({
       items,
       count,
-      addItem: (item: CartItem) => {
-        setItems((currentItems) => {
-          const existingIndex = currentItems.findIndex(
-            (currentItem) =>
-              currentItem.product.id === item.product.id &&
-              currentItem.selectedSize === item.selectedSize,
-          );
-
-          if (existingIndex === -1) {
-            return [...currentItems, item];
-          }
-
-          return currentItems.map((currentItem, index) =>
-            index === existingIndex
-              ? {
-                  ...currentItem,
-                  quantity: currentItem.quantity + item.quantity,
-                }
-              : currentItem,
-          );
-        });
-      },
-      clearCart: () => {
-        setItems([]);
-      },
+      addItem,
+      clearCart,
     }),
-    [count, items],
+    [addItem, clearCart, count, items],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

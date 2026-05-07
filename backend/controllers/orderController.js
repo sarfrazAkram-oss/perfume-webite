@@ -1,7 +1,17 @@
 const mongoose = require("mongoose");
 const Order = require("../models/Order");
 
-const localOrders = [];
+const isProduction = process.env.NODE_ENV === "production";
+
+function logServerError(message, error) {
+  if (!isProduction) {
+    console.error(message, error);
+  }
+}
+
+function isValidObjectId(id) {
+  return typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
+}
 
 function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -79,31 +89,6 @@ function serializeOrder(order) {
   };
 }
 
-function saveLocalOrder(payload) {
-  const localOrder = {
-    _id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: payload.name,
-    fullName: payload.fullName,
-    phone: payload.phone,
-    address: payload.address,
-    city: payload.city,
-    paymentMethod: payload.paymentMethod,
-    status: payload.status,
-    rating: payload.rating,
-    products: payload.products,
-    total: payload.total,
-    totalPrice: payload.totalPrice,
-    createdAt: new Date(),
-  };
-
-  localOrders.unshift(localOrder);
-  return localOrder;
-}
-
-function getStore() {
-  return mongoose.connection.readyState === 1 ? "mongo" : "local";
-}
-
 async function createOrder(req, res) {
   try {
     const payload = normalizeOrderPayload(req.body || {});
@@ -118,26 +103,23 @@ async function createOrder(req, res) {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Order failed",
+        message: "Invalid order payload",
       });
     }
 
-    const order =
-      getStore() === "mongo"
-        ? await Order.create({
-            name: payload.name,
-            fullName: payload.fullName,
-            phone: payload.phone,
-            address: payload.address,
-            city: payload.city,
-            paymentMethod: payload.paymentMethod,
-            status: payload.status,
-            rating: payload.rating,
-            products: payload.products,
-            total: payload.total,
-            totalPrice: payload.totalPrice,
-          })
-        : saveLocalOrder(payload);
+    const order = await Order.create({
+      name: payload.name,
+      fullName: payload.fullName,
+      phone: payload.phone,
+      address: payload.address,
+      city: payload.city,
+      paymentMethod: payload.paymentMethod,
+      status: payload.status,
+      rating: payload.rating,
+      products: payload.products,
+      total: payload.total,
+      totalPrice: payload.totalPrice,
+    });
 
     return res.status(201).json({
       success: true,
@@ -145,7 +127,7 @@ async function createOrder(req, res) {
       id: String(order._id),
     });
   } catch (error) {
-    console.error("[POST /api/orders] Order failed", error);
+    logServerError("[POST /api/orders] Order failed", error);
 
     return res.status(500).json({
       success: false,
@@ -159,52 +141,40 @@ async function updateOrderRating(req, res) {
     const { id } = req.params;
     const rating = toNumber(req.body?.rating);
 
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id",
+      });
+    }
+
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({
         success: false,
-        message: "Order failed",
+        message: "Invalid rating value",
       });
     }
 
-    if (getStore() === "mongo") {
-      const updatedOrder = await Order.findByIdAndUpdate(
-        id,
-        { rating },
-        { new: true, runValidators: true },
-      ).lean();
+    const updatedOrder = await Order.findByIdAndUpdate(
+      id,
+      { rating },
+      { new: true, runValidators: true },
+    ).lean();
 
-      if (!updatedOrder) {
-        return res.status(404).json({
-          success: false,
-          message: "Order failed",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Order placed successfully",
-        order: serializeOrder(updatedOrder),
-      });
-    }
-
-    const localOrder = localOrders.find((item) => String(item._id) === String(id));
-
-    if (!localOrder) {
+    if (!updatedOrder) {
       return res.status(404).json({
         success: false,
-        message: "Order failed",
+        message: "Order not found",
       });
     }
-
-    localOrder.rating = rating;
 
     return res.status(200).json({
       success: true,
       message: "Order placed successfully",
-      order: serializeOrder(localOrder),
+      order: serializeOrder(updatedOrder),
     });
   } catch (error) {
-    console.error("[PATCH /api/orders/:id/rating] Order failed", error);
+    logServerError("[PATCH /api/orders/:id/rating] Order failed", error);
 
     return res.status(500).json({
       success: false,
@@ -218,45 +188,33 @@ async function updateOrderStatus(req, res) {
     const { id } = req.params;
     const nextStatus = req.body?.status === "delivered" ? "delivered" : "pending";
 
-    if (getStore() === "mongo") {
-      const updatedOrder = await Order.findByIdAndUpdate(
-        id,
-        { status: nextStatus },
-        { new: true, runValidators: true },
-      ).lean();
-
-      if (!updatedOrder) {
-        return res.status(404).json({
-          success: false,
-          message: "Order failed",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Order placed successfully",
-        order: serializeOrder(updatedOrder),
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id",
       });
     }
 
-    const localOrder = localOrders.find((item) => String(item._id) === String(id));
+    const updatedOrder = await Order.findByIdAndUpdate(
+      id,
+      { status: nextStatus },
+      { new: true, runValidators: true },
+    ).lean();
 
-    if (!localOrder) {
+    if (!updatedOrder) {
       return res.status(404).json({
         success: false,
-        message: "Order failed",
+        message: "Order not found",
       });
     }
-
-    localOrder.status = nextStatus;
 
     return res.status(200).json({
       success: true,
       message: "Order placed successfully",
-      order: serializeOrder(localOrder),
+      order: serializeOrder(updatedOrder),
     });
   } catch (error) {
-    console.error("[PATCH /api/orders/:id] Order failed", error);
+    logServerError("[PATCH /api/orders/:id] Order failed", error);
 
     return res.status(500).json({
       success: false,
@@ -269,40 +227,28 @@ async function deleteOrder(req, res) {
   try {
     const { id } = req.params;
 
-    if (getStore() === "mongo") {
-      const deletedOrder = await Order.findByIdAndDelete(id).lean();
-
-      if (!deletedOrder) {
-        return res.status(404).json({
-          success: false,
-          message: "Order failed",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Order placed successfully",
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order id",
       });
     }
 
-    const nextOrders = localOrders.filter((item) => String(item._id) !== String(id));
+    const deletedOrder = await Order.findByIdAndDelete(id).lean();
 
-    if (nextOrders.length === localOrders.length) {
+    if (!deletedOrder) {
       return res.status(404).json({
         success: false,
-        message: "Order failed",
+        message: "Order not found",
       });
     }
-
-    localOrders.length = 0;
-    localOrders.push(...nextOrders);
 
     return res.status(200).json({
       success: true,
       message: "Order placed successfully",
     });
   } catch (error) {
-    console.error("[DELETE /api/orders/:id] Order failed", error);
+    logServerError("[DELETE /api/orders/:id] Order failed", error);
 
     return res.status(500).json({
       success: false,
@@ -313,16 +259,14 @@ async function deleteOrder(req, res) {
 
 async function getOrders(req, res) {
   try {
-    const orders = getStore() === "mongo"
-      ? await Order.find().sort({ createdAt: -1 }).lean()
-      : localOrders;
+    const orders = await Order.find().sort({ createdAt: -1 }).lean();
 
     return res.status(200).json({
       success: true,
       orders: orders.map(serializeOrder),
     });
   } catch (error) {
-    console.error("[GET /api/orders] Failed to load orders", error);
+    logServerError("[GET /api/orders] Failed to load orders", error);
 
     return res.status(500).json({
       success: false,

@@ -42,8 +42,7 @@ type BackendOrderResponse = {
   order?: unknown;
 };
 
-const ORDERS_API_BASE_URL =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL?.replace(/\/$/, "") || "http://localhost:5000";
+const ORDERS_API_BASE_URL = process.env.NEXT_PUBLIC_ORDERS_API_URL?.replace(/\/$/, "") || "/api";
 
 const ORDERS_ENDPOINT = `${ORDERS_API_BASE_URL}/api/orders`;
 

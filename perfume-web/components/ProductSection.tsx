@@ -63,10 +63,8 @@ export default function ProductSection({
 
         {/* See More Button */}
         <div className="flex justify-center pt-6 sm:pt-8">
-          <Link href={link}>
-            <button className="button-ghost font-semibold text-sm sm:text-base">
-              SEE MORE
-            </button>
+          <Link href={link} className="button-ghost font-semibold text-sm sm:text-base">
+            SEE MORE
           </Link>
         </div>
       </div>

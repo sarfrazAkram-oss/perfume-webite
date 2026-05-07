@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   describeFirebaseOrderError,
@@ -36,7 +36,7 @@ export default function AdminDashboardPage() {
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
 
-  const loadOrders = () => {
+  const loadOrders = useCallback(() => {
     setLoading(true);
     setLoadError("");
     setActionError("");
@@ -47,12 +47,15 @@ export default function AdminDashboardPage() {
         setLoading(false);
       },
       onError: (error) => {
-        console.error("[AdminDashboardPage] Order read failed", error);
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[AdminDashboardPage] Order read failed", error);
+        }
+
         setLoadError(describeFirebaseOrderError(error, "read"));
         setLoading(false);
       },
     });
-  };
+  }, []);
 
   const handleMarkDelivered = async (orderId: string) => {
     try {
@@ -64,7 +67,10 @@ export default function AdminDashboardPage() {
         ),
       );
     } catch (error) {
-      console.error("[AdminDashboardPage] Order status update failed", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[AdminDashboardPage] Order status update failed", error);
+      }
+
       setActionError(describeFirebaseOrderError(error, "write"));
     }
   };
@@ -75,7 +81,10 @@ export default function AdminDashboardPage() {
       await deleteOrder(orderId);
       setOrders((currentOrders) => currentOrders.filter((order) => order.id !== orderId));
     } catch (error) {
-      console.error("[AdminDashboardPage] Order delete failed", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[AdminDashboardPage] Order delete failed", error);
+      }
+
       setActionError(describeFirebaseOrderError(error, "write"));
     }
   };
@@ -112,7 +121,7 @@ export default function AdminDashboardPage() {
 
     const unsubscribeOrders = loadOrders();
     return unsubscribeOrders;
-  }, [isAuthenticated, ordersRefreshCount]);
+  }, [isAuthenticated, loadOrders, ordersRefreshCount]);
 
   const handleLogout = async () => {
     await signOutAdmin();

@@ -107,7 +107,10 @@ export default function CartPage() {
       setErrors({});
       setPaymentMethod("cod");
     } catch (error) {
-      console.error("[CartPage] Order placement failed", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[CartPage] Order placement failed", error);
+      }
+
       setSubmitError(describeFirebaseOrderError(error, "write"));
     } finally {
       setIsSubmitting(false);
@@ -125,7 +128,9 @@ export default function CartPage() {
     try {
       await updateOrderRating(placedOrderId, nextRating);
     } catch (error) {
-      console.error("[CartPage] Rating save failed", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[CartPage] Rating save failed", error);
+      }
     } finally {
       setIsSavingRating(false);
     }

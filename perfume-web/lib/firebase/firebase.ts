@@ -2,18 +2,18 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
 
 export const firebaseWebConfig = {
-  apiKey: "AIzaSyCOWPZhRPkZlHMTgZCToPvxdCgPStNRwHM",
-  authDomain: "perfume-webite.firebaseapp.com",
-  projectId: "perfume-webite",
-  storageBucket: "perfume-webite.firebasestorage.app",
-  messagingSenderId: "35597806107",
-  appId: "1:35597806107:web:72b774a93a659bc58326be",
-  measurementId: "G-TW9C5392LB",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-export const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseWebConfig);
+export const firebaseApp =
+  getApps().length > 0 ? getApp() : initializeApp(firebaseWebConfig);
 
-// Auto-detect long-polling avoids hanging requests on restricted networks.
 export const firestoreDb = (() => {
   try {
     return initializeFirestore(firebaseApp, {
