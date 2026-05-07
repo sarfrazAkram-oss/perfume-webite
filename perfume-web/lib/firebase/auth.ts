@@ -11,10 +11,27 @@ import {
 } from "firebase/auth";
 import { firebaseApp } from "./firebase";
 
-const auth = getAuth(firebaseApp);
 export const ADMIN_EMAIL = "miansarfaraz206905@gmail.com";
 const ADMIN_PASSWORD = (process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "Sarfaraz576949").trim();
 const LOCAL_ADMIN_SESSION_KEY = "og-admin-session-email";
+let auth: ReturnType<typeof getAuth> | null = null;
+
+function getAdminAuth() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (auth) {
+    return auth;
+  }
+
+  try {
+    auth = getAuth(firebaseApp);
+    return auth;
+  } catch {
+    return null;
+  }
+}
 
 export interface AdminAuthUser {
   email: string;
@@ -90,12 +107,26 @@ export async function signInAdmin(
     throw new Error("Access denied. Admin only.");
   }
 
+  const currentAuth = getAdminAuth();
+
+  if (!currentAuth) {
+    if (normalizedEmail === normalizedAllowedEmail && password === ADMIN_PASSWORD) {
+      writeLocalAdminSession(normalizedAllowedEmail);
+      return {
+        email: normalizedAllowedEmail,
+        source: "local" as const,
+      };
+    }
+
+    throw new Error("Admin auth is unavailable right now.");
+  }
+
   try {
-    await setPersistence(auth, browserLocalPersistence);
-    const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    await setPersistence(currentAuth, browserLocalPersistence);
+    const credential = await signInWithEmailAndPassword(currentAuth, normalizedEmail, password);
 
     if (credential.user.email?.toLowerCase() !== normalizedAllowedEmail) {
-      await signOut(auth);
+      await signOut(currentAuth);
       throw new Error("Access denied. Admin only.");
     }
 
@@ -123,7 +154,8 @@ export async function signInAdmin(
 }
 
 export function observeAdminAuth(callback: (user: AdminAuthUser | null) => void) {
-  const currentFirebaseEmail = auth.currentUser?.email?.toLowerCase();
+  const currentAuth = getAdminAuth();
+  const currentFirebaseEmail = currentAuth?.currentUser?.email?.toLowerCase();
 
   if (currentFirebaseEmail) {
     writeLocalAdminSession(currentFirebaseEmail);
@@ -133,17 +165,21 @@ export function observeAdminAuth(callback: (user: AdminAuthUser | null) => void)
     });
   } else {
     const localEmail = readLocalAdminSession();
-    callback(
-      localEmail
-        ? {
-            email: localEmail,
-            source: "local",
-          }
-        : null,
-    );
+    if (localEmail) {
+      callback({
+        email: localEmail,
+        source: "local",
+      });
+    } else if (!currentAuth) {
+      callback(null);
+    }
   }
 
-  return onAuthStateChanged(auth, (user) => {
+  if (!currentAuth) {
+    return () => {};
+  }
+
+  return onAuthStateChanged(currentAuth, (user) => {
     if (user?.email) {
       const normalizedEmail = user.email.toLowerCase();
       writeLocalAdminSession(normalizedEmail);
@@ -155,22 +191,29 @@ export function observeAdminAuth(callback: (user: AdminAuthUser | null) => void)
     }
 
     const localEmail = readLocalAdminSession();
-    callback(
-      localEmail
-        ? {
-            email: localEmail,
-            source: "local",
-          }
-        : null,
-    );
+    if (localEmail) {
+      callback({
+        email: localEmail,
+        source: "local",
+      });
+      return;
+    }
+
+    callback(null);
   });
 }
 
 export async function signOutAdmin() {
   clearLocalAdminSession();
 
+  const currentAuth = getAdminAuth();
+
+  if (!currentAuth) {
+    return;
+  }
+
   try {
-    await signOut(auth);
+    await signOut(currentAuth);
   } catch {
     // Ignore sign-out errors when there is no active Firebase session.
   }

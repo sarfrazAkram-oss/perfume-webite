@@ -1,106 +1,196 @@
-'use client';
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, type ReactNode } from "react";
 import { createOrder, describeFirebaseOrderError } from "@/lib/firebase/orders";
-import { getProductById, products } from "@/lib/products";
+import {
+  formatPrice,
+  getDiscountPercent,
+  getProductById,
+  getProductByKey,
+  products,
+} from "@/lib/products";
 import { useCart } from "./CartContext";
 
 type CheckoutPageProps = {
-  initialProductId: number;
+  initialProductId?: number;
+  initialProductKey?: string;
+  initialQuantity?: number;
+  initialSize?: string;
 };
 
 const SHIPPING_FEE = 150;
 
-function formatRsPrice(value: number) {
-  const rounded = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(2);
+type CustomerInfo = {
+  fullName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  orderNotes: string;
+};
 
-  return `Rs ${rounded}`;
+type FieldProps = {
+  label: string;
+  error?: string;
+  fullWidth?: boolean;
+  children: ReactNode;
+};
+
+function Field({ label, error, fullWidth = false, children }: FieldProps) {
+  return (
+    <label className={`block ${fullWidth ? "md:col-span-2 xl:col-span-3" : ""}`}>
+      <span className="mb-2 block text-[16px] font-semibold text-[#111111]">{label}</span>
+      {children}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </label>
+  );
 }
 
-function CartIcon() {
+function FeatureIcon({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
   return (
-    <svg
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13 5.4 5M7 13l-1.5 6h11l1.5-6M9 21a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM18 21a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-      />
+    <div className="flex items-center gap-3">
+      <span className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full bg-[#f4f4f4] text-[#111111]">
+        {children}
+      </span>
+      <span className="text-[16px] font-medium text-[#444444]">{title}</span>
+    </div>
+  );
+}
+
+function FeatureIconSvg({ type }: { type: "bottle" | "clock" | "gift" }) {
+  if (type === "clock") {
+    return (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 6v6l4 2" />
+        <circle cx="12" cy="12" r="8" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+
+  if (type === "gift") {
+    return (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M20 12H4m16 0v8H4v-8m16 0H4m8 0V4m0 8c-2.2 0-4-1.8-4-4 0-1.7 1.3-3 3-3 1.3 0 2.4.8 3 2 .6-1.2 1.7-2 3-2 1.7 0 3 1.3 3 3 0 2.2-1.8 4-4 4Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 4h8v4l2 2v10H6V10l2-2V4Zm2 0v4m4-4v4M9 12h6" />
     </svg>
   );
 }
 
-export default function CheckoutPage({ initialProductId }: CheckoutPageProps) {
-  const { items, count, clearCart } = useCart();
-  const [paymentMethod, setPaymentMethod] = useState<"cod" | "online">("cod");
-  const [customerInfo, setCustomerInfo] = useState({
+export default function CheckoutPage({
+  initialProductId,
+  initialProductKey,
+  initialQuantity = 1,
+  initialSize,
+}: CheckoutPageProps) {
+  const { items, clearCart } = useCart();
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo>({
     fullName: "",
-    city: "",
-    address: "",
+    email: "",
     phone: "",
+    address: "",
+    city: "",
+    orderNotes: "",
   });
-  const [errors, setErrors] = useState<Partial<typeof customerInfo>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof CustomerInfo, string>>>({});
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOrderPlaced, setIsOrderPlaced] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState("");
 
-  const product = useMemo(
-    () => getProductById(initialProductId) ?? products[0],
-    [initialProductId],
-  );
+  const selectedProduct = useMemo(() => {
+    if (typeof initialProductKey === "string" && initialProductKey.trim()) {
+      return getProductByKey(initialProductKey) ?? products[0];
+    }
 
-  const orderProducts = useMemo(
-    () =>
-      items.length > 0
-        ? items.map((item) => ({
-            name: item.product.name,
-            price: item.product.price,
-            quantity: item.quantity,
-          }))
-        : [
-            {
-              name: product.name,
-              price: product.price,
-              quantity: 1,
-            },
-          ],
-    [items, product.name, product.price],
-  );
+    if (typeof initialProductId === "number" && Number.isFinite(initialProductId)) {
+      return getProductById(initialProductId) ?? products[0];
+    }
 
+    return items[0]?.product ?? products[0];
+  }, [initialProductId, initialProductKey, items]);
+
+  const orderProducts = useMemo(() => {
+    const quantity = Math.max(1, initialQuantity);
+
+    if (typeof initialProductKey === "string" && initialProductKey.trim()) {
+      return [
+        {
+          name: selectedProduct.name,
+          price: selectedProduct.price,
+          quantity,
+        },
+      ];
+    }
+
+    if (typeof initialProductId === "number" && Number.isFinite(initialProductId)) {
+      return [
+        {
+          name: selectedProduct.name,
+          price: selectedProduct.price,
+          quantity,
+        },
+      ];
+    }
+
+    if (items.length > 0) {
+      return items.map((item) => ({
+        name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity,
+      }));
+    }
+
+    return [
+      {
+        name: selectedProduct.name,
+        price: selectedProduct.price,
+        quantity: 1,
+      },
+    ];
+  }, [initialProductId, initialProductKey, initialQuantity, items, selectedProduct]);
+
+  const discountPercent = useMemo(() => getDiscountPercent(selectedProduct), [selectedProduct]);
   const subtotal = orderProducts.reduce(
     (runningTotal, item) => runningTotal + item.price * item.quantity,
     0,
   );
   const total = subtotal + SHIPPING_FEE;
+  const selectedSize = initialSize || items[0]?.selectedSize || selectedProduct.sizes[0] || "Default";
 
   const validateForm = () => {
-    const nextErrors: Partial<typeof customerInfo> = {};
+    const nextErrors: Partial<Record<keyof CustomerInfo, string>> = {};
     const cleanedPhone = customerInfo.phone.replace(/\D/g, "");
 
-    if (!customerInfo.fullName.trim()) {
-      nextErrors.fullName = "Full name is required.";
+    if (!customerInfo.fullName.trim()) nextErrors.fullName = "Full name is required.";
+
+    if (!customerInfo.email.trim()) {
+      nextErrors.email = "Email address is required.";
+    } else if (!/^\S+@\S+\.\S+$/.test(customerInfo.email.trim())) {
+      nextErrors.email = "Enter a valid email address.";
     }
 
-    if (!customerInfo.city.trim()) {
-      nextErrors.city = "City is required.";
-    }
-
-    if (!customerInfo.address.trim()) {
-      nextErrors.address = "Complete address is required.";
-    }
-
-    if (cleanedPhone.length < 10) {
+    if (!customerInfo.phone.trim()) nextErrors.phone = "Phone number is required.";
+    else if (cleanedPhone.length < 10) {
       nextErrors.phone = "Enter a valid phone number with at least 10 digits.";
     }
+
+    if (!customerInfo.address.trim()) nextErrors.address = "Address is required.";
+    if (!customerInfo.city.trim()) nextErrors.city = "City is required.";
+    if (!customerInfo.orderNotes.trim()) nextErrors.orderNotes = "Order notes are required.";
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -124,10 +214,15 @@ export default function CheckoutPage({ initialProductId }: CheckoutPageProps) {
 
       const orderResult = await createOrder({
         fullName: customerInfo.fullName.trim(),
-        city: customerInfo.city.trim(),
-        address: customerInfo.address.trim(),
+        email: customerInfo.email.trim(),
         phone: customerInfo.phone.trim(),
-        paymentMethod,
+        address: customerInfo.address.trim(),
+        city: customerInfo.city.trim(),
+        orderNotes: customerInfo.orderNotes.trim(),
+        state: "",
+        country: "",
+        postalCode: "",
+        paymentMethod: "cod",
         products: orderProducts,
         totalPrice: total,
       });
@@ -137,12 +232,13 @@ export default function CheckoutPage({ initialProductId }: CheckoutPageProps) {
       setIsOrderPlaced(true);
       setCustomerInfo({
         fullName: "",
-        city: "",
-        address: "",
+        email: "",
         phone: "",
+        address: "",
+        city: "",
+        orderNotes: "",
       });
       setErrors({});
-      setPaymentMethod("cod");
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.error("[CheckoutPage] Order placement failed", error);
@@ -154,306 +250,203 @@ export default function CheckoutPage({ initialProductId }: CheckoutPageProps) {
     }
   };
 
+  if (isOrderPlaced) {
+    return (
+      <main className="w-full bg-white text-black">
+        <div className="mx-auto flex w-full max-w-[1400px] items-center justify-center px-4 py-10 sm:px-6">
+          <section className="w-full max-w-3xl rounded-[18px] border border-[#eeeeee] bg-white p-8 text-center shadow-[0_18px_40px_rgba(17,17,17,0.06)] sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e7f8ea] text-[#32c852]">
+              <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <p className="mt-5 text-[14px] font-semibold uppercase tracking-[0.28em] text-[#32c852]">
+              Order Confirmed
+            </p>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight text-[#111111] sm:text-5xl">
+              Thank you for your order
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-[#666666] sm:text-lg">
+              Your order has been placed successfully. We have received your information and the team will process it shortly.
+            </p>
+            {placedOrderId && (
+              <p className="mt-6 text-sm font-medium tracking-[0.2em] text-[#6b7280]">
+                ORDER ID: {placedOrderId}
+              </p>
+            )}
+            <Link
+              href="/"
+              className="mt-8 inline-flex h-[60px] items-center justify-center rounded-[10px] bg-[#ff6600] px-8 text-lg font-bold text-white transition hover:bg-[#e85c00]"
+            >
+              Continue Shopping
+            </Link>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-transparent text-black">
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-4 sm:px-6 sm:py-6 lg:max-w-4xl lg:px-8">
-        <header className="grid grid-cols-[1fr_auto_1fr] items-center border-b border-black/5 pb-4 sm:pb-5">
-          <div />
+    <main className="w-full bg-white text-black">
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-10 sm:px-6 lg:px-6">
+        <section className="grid gap-10 lg:grid-cols-[48fr_52fr] lg:gap-10">
+          <div className="relative">
+            <div className="relative h-[360px] overflow-hidden rounded-[16px] bg-[#f8f8f8] sm:h-[520px] lg:h-[620px]">
+              <Image
+                src={selectedProduct.image}
+                alt={selectedProduct.name}
+                fill
+                priority
+                className="object-cover"
+                sizes="(min-width: 1024px) 48vw, 100vw"
+              />
 
-          <Link
-            href="/"
-            className="flex items-center gap-3 justify-self-center text-black"
-            aria-label="The Olfactory Gallery home"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-black text-sm font-semibold text-white shadow-sm">
-              OG
-            </span>
-            <span className="text-[0.7rem] font-semibold uppercase tracking-[0.32em] sm:text-xs">
-              The Olfactory Gallery
-            </span>
-          </Link>
+              {discountPercent > 0 && (
+                <span className="absolute left-4 top-4 rounded-full bg-[#32c852] px-3.5 py-2 text-[14px] font-semibold text-white">
+                  {discountPercent}% OFF
+                </span>
+              )}
+            </div>
+          </div>
 
-          <button
-            type="button"
-            className="relative justify-self-end rounded-full border border-black/10 bg-white p-3 text-black shadow-sm transition hover:border-black/20 hover:bg-black/5"
-            aria-label="Cart"
-          >
-            <CartIcon />
-            {count > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-black px-1 text-[10px] font-semibold text-white">
-                {count}
+          <div className="flex flex-col justify-start pt-2 lg:pt-0">
+            <h1 className="text-[34px] font-bold tracking-tight text-[#111111] sm:text-[42px] lg:text-[52px] lg:leading-[1.04]">
+              {selectedProduct.name}
+            </h1>
+
+            <div className="mt-5 flex flex-wrap items-center gap-4">
+              <span className="text-[34px] font-bold text-[#ff6600] lg:text-[48px]">
+                {formatPrice(selectedProduct.price)}
               </span>
-            )}
-          </button>
-        </header>
+              {selectedProduct.oldPrice && (
+                <span className="text-[22px] text-[#999999] line-through lg:text-[28px]">
+                  {formatPrice(selectedProduct.oldPrice)}
+                </span>
+              )}
+              {discountPercent > 0 && (
+                <span className="rounded-[8px] bg-[#e7f8ea] px-3 py-1.5 text-[16px] font-semibold text-[#32c852]">
+                  {discountPercent}% OFF
+                </span>
+              )}
+            </div>
 
-        <form className="flex-1 py-6 sm:py-8" onSubmit={handleSubmit}>
-          <div className="space-y-5 sm:space-y-6">
-            {isOrderPlaced && (
-              <section className="rounded-[28px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6 text-center shadow-[0_18px_35px_rgba(16,185,129,0.12)] sm:p-8">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-700/80">
-                  Order Confirmed
-                </p>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-emerald-900 sm:text-4xl">
-                  Thank You
-                </h2>
-                <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-emerald-900/80 sm:text-base">
-                  Your order has been placed successfully. We appreciate your purchase and will
-                  start processing your order details shortly.
-                </p>
-                {placedOrderId && (
-                  <p className="mt-4 text-xs font-medium tracking-[0.18em] text-emerald-800/80 sm:text-sm">
-                    ORDER ID: {placedOrderId}
-                  </p>
-                )}
-                <Link
-                  href="/"
-                  className="mt-6 inline-flex rounded-2xl bg-emerald-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
-                >
-                  Continue Shopping
-                </Link>
-              </section>
-            )}
+            <p className="mt-6 max-w-2xl text-[18px] leading-[32px] text-[#666666]">
+              {selectedProduct.description}
+            </p>
 
-            {!isOrderPlaced && (
-              <>
-            <section className="rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_10px_30px_rgba(0,0,0,0.04)] sm:p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-black/45">
-                Cart Summary
-              </p>
+            <div className="mt-8 flex flex-wrap gap-6">
+              <FeatureIcon title="Eau De Parfum">
+                <FeatureIconSvg type="bottle" />
+              </FeatureIcon>
+              <FeatureIcon title="Long Lasting">
+                <FeatureIconSvg type="clock" />
+              </FeatureIcon>
+              <FeatureIcon title="Premium Quality">
+                <FeatureIconSvg type="gift" />
+              </FeatureIcon>
+            </div>
+          </div>
+        </section>
 
-              <div className="mt-4 space-y-3 rounded-2xl border border-black/10 bg-black/[0.02] p-4">
-                {orderProducts.map((orderProduct, index) => (
-                  <div
-                    key={`${orderProduct.name}-${index}`}
-                    className="flex items-center justify-between gap-4"
-                  >
-                    <div className="min-w-0">
-                      <p className="line-clamp-2 text-sm font-semibold text-black">
-                        {orderProduct.name}
-                      </p>
-                      <p className="text-xs text-black/55">Quantity: {orderProduct.quantity}</p>
-                    </div>
-                    <p className="text-sm font-medium text-black">
-                      {formatRsPrice(orderProduct.price * orderProduct.quantity)}
-                    </p>
-                  </div>
-                ))}
-                {items.length === 0 && (
-                  <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-black/10 bg-white">
-                    <Image
-                      src={product.image}
-                      alt={product.name}
-                      fill
-                      className="object-cover"
-                      sizes="64px"
-                    />
-                  </div>
-                )}
-              </div>
+        <section className="mt-[60px] rounded-[18px] border border-[#eeeeee] bg-white p-6 sm:p-10 lg:p-10">
+          <div className="max-w-3xl">
+            <h2 className="text-[30px] font-bold tracking-tight text-[#111111] sm:text-[38px]">
+              Customer Information
+            </h2>
+            <p className="mt-2 text-[17px] text-[#777777]">
+              Please provide your details to place the order.
+            </p>
+          </div>
 
-              <div className="mt-4 space-y-3 rounded-[24px] border border-black/10 p-4">
-                <div className="flex items-center justify-between gap-4 text-sm text-black/70">
-                  <span>Product Price</span>
-                  <span className="font-medium">{formatRsPrice(subtotal)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 text-sm text-black/70">
-                  <span>Shipping</span>
-                  <span className="font-medium">{formatRsPrice(SHIPPING_FEE)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 border-t border-black/10 pt-3 text-base font-semibold text-black">
-                  <span>Total</span>
-                  <span>{formatRsPrice(total)}</span>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_10px_30px_rgba(0,0,0,0.04)] sm:p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-black/45">
-                Customer Information
-              </p>
-
-              <div className="mt-4 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-black/80" htmlFor="fullName">
-                    Full Name
-                  </label>
-                  <input
-                    id="fullName"
-                    name="fullName"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="Enter full name"
-                    value={customerInfo.fullName}
-                    onChange={(event) =>
-                      setCustomerInfo((currentValue) => ({
-                        ...currentValue,
-                        fullName: event.target.value,
-                      }))
-                    }
-                    className="h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-[15px] text-black outline-none transition placeholder:text-black/30 focus:border-black/30 focus:ring-4 focus:ring-black/5"
-                  />
-                  {errors.fullName && <p className="text-xs text-red-600">{errors.fullName}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-black/80" htmlFor="city">
-                    City
-                  </label>
-                  <input
-                    id="city"
-                    name="city"
-                    type="text"
-                    autoComplete="address-level2"
-                    placeholder="Enter city"
-                    value={customerInfo.city}
-                    onChange={(event) =>
-                      setCustomerInfo((currentValue) => ({
-                        ...currentValue,
-                        city: event.target.value,
-                      }))
-                    }
-                    className="h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-[15px] text-black outline-none transition placeholder:text-black/30 focus:border-black/30 focus:ring-4 focus:ring-black/5"
-                  />
-                  {errors.city && <p className="text-xs text-red-600">{errors.city}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-black/80" htmlFor="address">
-                    Complete Address
-                  </label>
-                  <input
-                    id="address"
-                    name="address"
-                    type="text"
-                    autoComplete="street-address"
-                    placeholder="Street, house number, area"
-                    value={customerInfo.address}
-                    onChange={(event) =>
-                      setCustomerInfo((currentValue) => ({
-                        ...currentValue,
-                        address: event.target.value,
-                      }))
-                    }
-                    className="h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-[15px] text-black outline-none transition placeholder:text-black/30 focus:border-black/30 focus:ring-4 focus:ring-black/5"
-                  />
-                  {errors.address && <p className="text-xs text-red-600">{errors.address}</p>}
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_10px_30px_rgba(0,0,0,0.04)] sm:p-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-black/80" htmlFor="phone">
-                  Phone Number
-                </label>
+          <form className="mt-10" onSubmit={handleSubmit} data-selected-size={selectedSize}>
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="Full Name" error={errors.fullName}>
                 <input
-                  id="phone"
-                  name="phone"
+                  type="text"
+                  value={customerInfo.fullName}
+                  onChange={(event) =>
+                    setCustomerInfo((current) => ({ ...current, fullName: event.target.value }))
+                  }
+                  placeholder="Enter your full name"
+                  className="h-[62px] w-full rounded-[10px] border border-[#dddddd] bg-white px-[18px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
+                />
+              </Field>
+
+              <Field label="Email Address" error={errors.email}>
+                <input
+                  type="email"
+                  value={customerInfo.email}
+                  onChange={(event) =>
+                    setCustomerInfo((current) => ({ ...current, email: event.target.value }))
+                  }
+                  placeholder="Enter your email"
+                  className="h-[62px] w-full rounded-[10px] border border-[#dddddd] bg-white px-[18px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
+                />
+              </Field>
+
+              <Field label="Phone Number" error={errors.phone}>
+                <input
                   type="tel"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  placeholder="Enter phone number"
                   value={customerInfo.phone}
                   onChange={(event) =>
-                    setCustomerInfo((currentValue) => ({
-                      ...currentValue,
-                      phone: event.target.value,
-                    }))
+                    setCustomerInfo((current) => ({ ...current, phone: event.target.value }))
                   }
-                  className="h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-[15px] text-black outline-none transition placeholder:text-black/30 focus:border-black/30 focus:ring-4 focus:ring-black/5"
+                  placeholder="Enter your phone number"
+                  className="h-[62px] w-full rounded-[10px] border border-[#dddddd] bg-white px-[18px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
                 />
-                {errors.phone && <p className="text-xs text-red-600">{errors.phone}</p>}
-              </div>
-            </section>
+              </Field>
 
-            <section className="rounded-[28px] border border-black/10 bg-white p-5 shadow-[0_10px_30px_rgba(0,0,0,0.04)] sm:p-6">
-              <h2 className="text-lg font-semibold tracking-tight text-black">Payment Method</h2>
+              <Field label="Address" error={errors.address} fullWidth>
+                <input
+                  type="text"
+                  value={customerInfo.address}
+                  onChange={(event) =>
+                    setCustomerInfo((current) => ({ ...current, address: event.target.value }))
+                  }
+                  placeholder="Enter your full address"
+                  className="h-[62px] w-full rounded-[10px] border border-[#dddddd] bg-white px-[18px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
+                />
+              </Field>
 
-              <fieldset className="mt-4 space-y-3">
-                <label className="block cursor-pointer">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cod"
-                    checked={paymentMethod === "cod"}
-                    onChange={() => setPaymentMethod("cod")}
-                    className="sr-only"
-                  />
-                  <div
-                    className={`flex items-center gap-4 rounded-2xl border px-4 py-4 transition hover:border-black/20 hover:bg-black/[0.02] ${paymentMethod === "cod" ? "border-black bg-black/5" : "border-black/10"}`}
-                  >
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-black/30">
-                      {paymentMethod === "cod" && <span className="h-2.5 w-2.5 rounded-full bg-black" />}
-                    </span>
-                    <span className="text-[15px] font-medium">Cash on Delivery</span>
-                  </div>
-                </label>
+              <Field label="City" error={errors.city}>
+                <input
+                  type="text"
+                  value={customerInfo.city}
+                  onChange={(event) =>
+                    setCustomerInfo((current) => ({ ...current, city: event.target.value }))
+                  }
+                  placeholder="Enter your city"
+                  className="h-[62px] w-full rounded-[10px] border border-[#dddddd] bg-white px-[18px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
+                />
+              </Field>
 
-                <label className="block cursor-pointer">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="online"
-                    checked={paymentMethod === "online"}
-                    onChange={() => setPaymentMethod("online")}
-                    className="sr-only"
-                  />
-                  <div
-                    className={`flex items-center gap-4 rounded-2xl border px-4 py-4 transition hover:border-black/20 hover:bg-black/[0.02] ${paymentMethod === "online" ? "border-black bg-black/5" : "border-black/10"}`}
-                  >
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-black/30">
-                      {paymentMethod === "online" && <span className="h-2.5 w-2.5 rounded-full bg-black" />}
-                    </span>
-                    <span className="text-[15px] font-medium">Online Payment</span>
-                  </div>
-                </label>
-              </fieldset>
-
-              {paymentMethod === "online" && (
-                <div className="mt-4 rounded-[24px] border border-black/10 bg-black/[0.03] p-4 sm:p-5">
-                  <p className="text-sm font-medium text-black">Bank Name: United Bank Limited</p>
-                  <p className="mt-2 text-sm font-medium text-black">Account Number: 1346358073554</p>
-                  <p className="mt-2 text-sm font-medium text-black">Account Name: Sarfraz Akram</p>
-
-                  <p className="mt-4 text-sm font-medium text-black">JazzCash Number: 03211315355</p>
-                  <p className="mt-2 text-sm font-medium text-black">Name: Sarfraz Akram</p>
-
-                  <p className="mt-4 text-xs text-black/65">
-                    Please send payment screenshot to this number: 03211315355 after completing
-                    transfer.
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <div className="mt-6 space-y-3 sm:mt-8">
-              <button
-                type="button"
-                onClick={clearCart}
-                className="w-full rounded-2xl border border-black/10 bg-white px-5 py-4 text-base font-semibold text-black transition hover:bg-black/5"
-              >
-                Clear Cart
-              </button>
-
-              {submitError && (
-                <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {submitError}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting || isOrderPlaced}
-                className="w-full rounded-2xl bg-black px-5 py-4 text-base font-semibold text-white shadow-[0_14px_30px_rgba(0,0,0,0.12)] transition hover:bg-black/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isSubmitting ? "Placing Order..." : "Place Order"}
-              </button>
+              <Field label="Order Notes" error={errors.orderNotes} fullWidth>
+                <textarea
+                  value={customerInfo.orderNotes}
+                  onChange={(event) =>
+                    setCustomerInfo((current) => ({ ...current, orderNotes: event.target.value }))
+                  }
+                  placeholder="Any special instructions for your order?"
+                  className="h-[140px] w-full resize-none rounded-[10px] border border-[#dddddd] bg-white px-[18px] py-[16px] text-[16px] text-[#111111] outline-none transition placeholder:text-[#9ca3af] focus:border-[#ff6600] focus:shadow-[0_0_0_4px_rgba(255,102,0,0.12)]"
+                />
+              </Field>
             </div>
-              </>
+
+            {submitError && (
+              <p className="mt-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {submitError}
+              </p>
             )}
-          </div>
-        </form>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="mt-[30px] flex h-[68px] w-full items-center justify-center rounded-[10px] bg-[#ff6600] text-[24px] font-bold text-white transition hover:bg-[#e85c00] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isSubmitting ? "Placing Order..." : "Place Order"}
+            </button>
+          </form>
+        </section>
       </div>
     </main>
   );

@@ -24,7 +24,11 @@ export function getProductSlug(product: Product) {
 }
 
 export function getProductHref(product: Product) {
-  return `/product/${encodeURIComponent(getProductSlug(product))}`;
+  return getCheckoutHref(product);
+}
+
+export function getCheckoutHref(product: Product, quantity = 1) {
+  return `/checkout?productId=${encodeURIComponent(getProductSlug(product))}&quantity=${quantity}`;
 }
 
 export function getProductByKey(productKey: string) {

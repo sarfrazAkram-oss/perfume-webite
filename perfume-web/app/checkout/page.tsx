@@ -9,16 +9,24 @@ export const metadata: Metadata = {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ productId?: string | string[] }>;
+  searchParams: Promise<{ productId?: string | string[]; quantity?: string | string[]; size?: string | string[] }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const rawProductId = resolvedSearchParams.productId;
-  const productIdValue = Array.isArray(rawProductId) ? rawProductId[0] : rawProductId;
-  const parsedProductId = Number(productIdValue);
+  const rawQuantity = resolvedSearchParams.quantity;
+  const rawSize = resolvedSearchParams.size;
+  const productKeyValue = Array.isArray(rawProductId) ? rawProductId[0] : rawProductId;
+  const quantityValue = Array.isArray(rawQuantity) ? rawQuantity[0] : rawQuantity;
+  const sizeValue = Array.isArray(rawSize) ? rawSize[0] : rawSize;
+  const parsedQuantity = Number(quantityValue);
+  const parsedProductId = Number(productKeyValue);
 
   return (
     <CheckoutPage
-      initialProductId={Number.isFinite(parsedProductId) && parsedProductId > 0 ? parsedProductId : 1}
+      initialProductKey={typeof productKeyValue === "string" ? productKeyValue : undefined}
+      initialProductId={Number.isFinite(parsedProductId) && parsedProductId > 0 ? parsedProductId : undefined}
+      initialQuantity={Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1}
+      initialSize={typeof sizeValue === "string" ? sizeValue : undefined}
     />
   );
 }

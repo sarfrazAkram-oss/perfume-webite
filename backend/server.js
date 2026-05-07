@@ -15,12 +15,25 @@ const allowedOrigins = (process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || "
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+function isLocalDevelopmentOrigin(origin) {
+  if (!origin || isProduction) {
+    return false;
+  }
+
+  try {
+    const parsedOrigin = new URL(origin);
+    return ["localhost", "127.0.0.1", "::1"].includes(parsedOrigin.hostname);
+  } catch {
+    return false;
+  }
+}
+
 app.set("trust proxy", 1);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin) || isLocalDevelopmentOrigin(origin)) {
         callback(null, true);
         return;
       }

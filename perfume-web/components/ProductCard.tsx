@@ -1,13 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/products";
-import {
-  formatPrice,
-  getDiscountPercent,
-  getProductHref,
-} from "@/lib/products";
+import { formatPrice, getCheckoutHref, getDiscountPercent } from "@/lib/products";
+import { useCart } from "./CartContext";
 
 interface ProductCardProps {
   product: Product;
@@ -15,14 +12,22 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, priority = false }: ProductCardProps) {
+  const router = useRouter();
+  const { addItem } = useCart();
   const discountPercent = getDiscountPercent(product);
 
+  const handleAddToCart = () => {
+    addItem({
+      product,
+      quantity: 1,
+      selectedSize: product.sizes[0] ?? "Default",
+    });
+
+    router.push(getCheckoutHref(product));
+  };
+
   return (
-    <Link
-      href={getProductHref(product)}
-      className="group block rounded-2xl border border-black/10 bg-[#FBF6EF] p-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#C9A24A]/50 hover:shadow-lg hover:shadow-black/10"
-      aria-label={`Open ${product.name}`}
-    >
+    <div className="group block rounded-2xl border border-black/10 bg-[#FBF6EF] p-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#C9A24A]/50 hover:shadow-lg hover:shadow-black/10">
       <div className="relative mb-4 aspect-[4/5] overflow-hidden rounded-xl bg-black/5">
         <Image
           src={product.image}
@@ -58,6 +63,14 @@ export default function ProductCard({ product, priority = false }: ProductCardPr
           )}
         </div>
       </div>
-    </Link>
+
+      <button
+        type="button"
+        onClick={handleAddToCart}
+        className="mt-[14px] flex h-[52px] w-full items-center justify-center rounded-[10px] border border-[#d9d9d9] bg-white px-5 text-[16px] font-semibold tracking-[0.3px] text-[#111111] transition-all duration-300 hover:border-black hover:bg-black hover:text-white"
+      >
+        Add to Cart
+      </button>
+    </div>
   );
 }

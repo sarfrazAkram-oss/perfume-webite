@@ -7,9 +7,14 @@ export interface OrderProduct {
 
 export interface CreateOrderInput {
   fullName: string;
+  email?: string;
   city: string;
   address: string;
   phone: string;
+  orderNotes?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
   paymentMethod: "cod" | "online";
   products: OrderProduct[];
   totalPrice: number;
@@ -42,7 +47,15 @@ type BackendOrderResponse = {
   order?: unknown;
 };
 
-const ORDERS_API_BASE_URL = process.env.NEXT_PUBLIC_ORDERS_API_URL?.replace(/\/$/, "") || "/api";
+function normalizeOrdersApiBaseUrl(value: string | undefined) {
+  const baseUrl = value?.trim() || "http://localhost:5000";
+
+  return baseUrl.replace(/\/$/, "").replace(/\/api$/, "");
+}
+
+const ORDERS_API_BASE_URL = normalizeOrdersApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_ORDERS_API_URL,
+);
 
 const ORDERS_ENDPOINT = `${ORDERS_API_BASE_URL}/api/orders`;
 
@@ -182,9 +195,14 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   const orderData = {
     name: input.fullName.trim(),
     fullName: input.fullName.trim(),
+    email: input.email?.trim() || "",
     city: input.city.trim(),
     address: input.address.trim(),
     phone: input.phone.trim(),
+    orderNotes: input.orderNotes?.trim() || "",
+    state: input.state?.trim() || "",
+    country: input.country?.trim() || "",
+    postalCode: input.postalCode?.trim() || "",
     paymentMethod: input.paymentMethod,
     products: input.products.map((item) => ({
       name: item.name,

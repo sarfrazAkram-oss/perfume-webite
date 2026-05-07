@@ -119,8 +119,21 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    const unsubscribeOrders = loadOrders();
-    return unsubscribeOrders;
+    let unsubscribeOrders: (() => void) | undefined;
+    let isCancelled = false;
+
+    queueMicrotask(() => {
+      if (isCancelled) {
+        return;
+      }
+
+      unsubscribeOrders = loadOrders();
+    });
+
+    return () => {
+      isCancelled = true;
+      unsubscribeOrders?.();
+    };
   }, [isAuthenticated, loadOrders, ordersRefreshCount]);
 
   const handleLogout = async () => {

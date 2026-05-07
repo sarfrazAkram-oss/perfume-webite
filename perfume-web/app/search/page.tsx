@@ -2,17 +2,14 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import NavbarDark from "@/components/NavbarDark";
 import SideDrawer from "@/components/SideDrawer";
 import Footer from "@/components/Footer";
+import { useRouter } from "next/navigation";
+import { useCart } from "@/components/CartContext";
 import type { Product } from "@/lib/products";
-import {
-  searchProducts,
-  formatPrice,
-  getProductHref,
-} from "@/lib/products";
+import { searchProducts, formatPrice, getCheckoutHref } from "@/lib/products";
 
 function highlightMatch(text: string, query: string) {
   const normalizedQuery = query.trim();
@@ -43,11 +40,21 @@ function highlightMatch(text: string, query: string) {
 }
 
 function SearchResultCard({ product, query }: { product: Product; query: string }) {
+  const router = useRouter();
+  const { addItem } = useCart();
+
+  const handleAddToCart = () => {
+    addItem({
+      product,
+      quantity: 1,
+      selectedSize: product.sizes[0] ?? "Default",
+    });
+
+    router.push(getCheckoutHref(product));
+  };
+
   return (
-    <Link
-      href={getProductHref(product)}
-      className="group block overflow-hidden rounded-2xl border border-gray-200 bg-[#FBF6EF] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#C9A24A]/50 hover:shadow-lg hover:shadow-black/10"
-    >
+    <div className="group block overflow-hidden rounded-2xl border border-gray-200 bg-[#FBF6EF] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#C9A24A]/50 hover:shadow-lg hover:shadow-black/10">
       <div className="relative aspect-[4/5] overflow-hidden bg-gray-50">
         <Image
           src={product.image}
@@ -68,7 +75,17 @@ function SearchResultCard({ product, query }: { product: Product; query: string 
           {formatPrice(product.price)}
         </p>
       </div>
-    </Link>
+
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={handleAddToCart}
+          className="mt-[14px] flex h-[52px] w-full items-center justify-center rounded-[10px] border border-[#d9d9d9] bg-white px-5 text-[16px] font-semibold tracking-[0.3px] text-[#111111] transition-all duration-300 hover:border-black hover:bg-black hover:text-white"
+        >
+          Add to Cart
+        </button>
+      </div>
+    </div>
   );
 }
 
